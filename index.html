@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบส่งตรวจเอกสาร (Document Review System)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; }
+        .sidebar { transition: transform 0.3s ease; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        .toast { position: fixed; top: 20px; right: 20px; z-index: 9999; animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-approved { background: #d1fae5; color: #065f46; }
+        .status-rejected { background: #fee2e2; color: #991b1b; }
+        .status-returned { background: #ffedd5; color: #9a3412; }
+        .hover-row:hover { background-color: #f9fafb; }
+        .doc-viewer-content { max-height: 70vh; overflow: auto; }
+        .doc-viewer-content iframe, .doc-viewer-content img { width: 100%; height: 600px; border: none; }
+        .doc-viewer-content img { object-fit: contain; background: #f3f4f6; }
+        .folder-card { transition: all 0.2s; }
+        .folder-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px -5px rgba(0,0,0,0.12); }
+
+        /* Mobile Sidebar Overlay */
+        @media (max-width: 1023px) {
+            .sidebar { position: fixed; left: 0; top: 0; height: 100vh; z-index: 40; transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 35; }
+            .sidebar-overlay.active { display: block; }
+            .main-content { margin-left: 0 !important; }
+        }
+        @media (min-width: 1024px) {
+            .sidebar { transform: translateX(0) !important; position: relative; height: auto; }
+            .sidebar-overlay { display: none !important; }
+            .mobile-toggle { display: none !important; }
+        }
+
+        /* Touch-friendly buttons */
+        .btn-touch { min-height: 44px; }
+
+        /* Mobile table improvements */
+        @media (max-width: 640px) {
+            .mobile-table th, .mobile-table td { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+            .mobile-table .action-btns { flex-direction: column; gap: 4px; }
+            .mobile-table .action-btns button { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="toast-container"></div>
+
+    <!-- Login Page -->
+    <div id="login-page" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-800 p-4">
+        <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-md fade-in">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-file-signature text-2xl text-blue-600"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">ระบบส่งตรวจเอกสาร</h1>
+                <p class="text-gray-500 text-sm mt-1">Document Review System</p>
+            </div>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
+                    <input type="email" id="login-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base" placeholder="email@company.com" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+                    <input type="password" id="login-password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium btn-touch">
+                    <i class="fas fa-sign-in-alt mr-2"></i> เข้าสู่ระบบ
+                </button>
+            </form>
+            <div class="mt-6 text-center">
+                <p class="text-sm text-gray-600">ยังไม่มีบัญชี? <button onclick="showRegister()" class="text-blue-600 hover:underline font-medium">ลงทะเบียน</button></p>
+            </div>
+            <div class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-500">
+                <p class="font-semibold mb-1">บัญชีทดลอง:</p>
+                <p>ผู้ดูแล: admin@company.com / admin123</p>
+                <p>ผู้ตรวจ: reviewer@company.com / reviewer123</p>
+                <p>ผู้ส่ง: submitter@company.com / submitter123</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Page -->
+    <div id="register-page" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-800 p-4 hidden">
+        <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl w-full max-w-md fade-in">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-900">ลงทะเบียน</h2>
+                <p class="text-gray-500 text-sm">สร้างบัญชีผู้ใช้งานใหม่</p>
+            </div>
+            <form id="register-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label>
+                    <input type="text" id="reg-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
+                    <input type="email" id="reg-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ฝ่าย</label>
+                    <select id="reg-dept" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">สิทธิ์การใช้งาน</label>
+                    <select id="reg-role" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base">
+                        <option value="Submitter">ผู้ส่งเอกสาร (Submitter)</option>
+                        <option value="Reviewer">ผู้ตรวจเอกสาร (Reviewer)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+                    <input type="password" id="reg-password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required minlength="6">
+                </div>
+                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition font-medium btn-touch">
+                    <i class="fas fa-user-plus mr-2"></i> ลงทะเบียน
+                </button>
+            </form>
+            <div class="mt-4 text-center">
+                <button onclick="showLogin()" class="text-sm text-gray-600 hover:text-gray-900"><i class="fas fa-arrow-left mr-1"></i> กลับไปหน้าเข้าสู่ระบบ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application UI -->
+    <div id="main-app" class="hidden min-h-screen flex">
+        <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar w-64 bg-white shadow-lg flex flex-col z-40 lg:relative lg:transform-none">
+            <div class="p-6 border-b flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-file-signature text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-900 leading-tight">DocReview</h3>
+                        <p class="text-xs text-gray-500">ระบบส่งตรวจเอกสาร</p>
+                    </div>
+                </div>
+                <button onclick="toggleSidebar()" class="lg:hidden text-gray-500 hover:text-gray-700 p-2">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-1 overflow-y-auto" id="sidebar-nav"></nav>
+
+            <div class="p-4 border-t bg-gray-50">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold" id="user-avatar">A</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate" id="user-name">Admin</p>
+                        <p class="text-xs text-gray-500 truncate" id="user-role">ผู้ดูแลระบบ</p>
+                    </div>
+                </div>
+                <button onclick="logout()" class="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition btn-touch">
+                    <i class="fas fa-sign-out-alt"></i> ออกจากระบบ
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col overflow-hidden min-w-0">
+            <header class="bg-white shadow-sm px-4 sm:px-8 py-4 flex justify-between items-center gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <button onclick="toggleSidebar()" class="mobile-toggle lg:hidden p-2 -ml-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    <h2 id="page-title" class="text-lg sm:text-xl font-bold text-gray-800 truncate">เอกสารของฉัน</h2>
+                </div>
+                <span class="text-xs sm:text-sm text-gray-500 hidden sm:inline" id="current-date"></span>
+            </header>
+            <div class="flex-1 overflow-auto p-4 sm:p-8" id="content-area"></div>
+        </main>
+    </div>
+
+    <!-- Submit Document Modal -->
+    <div id="submit-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl h-full sm:h-auto sm:max-h-[90vh] overflow-y-auto fade-in">
+            <div class="p-4 sm:p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-upload text-blue-600 mr-2"></i>ส่งเอกสารใหม่</h3>
+                <button onclick="closeModal('submit-modal')" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="submit-form" class="p-4 sm:p-6 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">รหัสเอกสาร</label>
+                        <input type="text" id="doc-code" class="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ส่ง</label>
+                        <input type="text" id="doc-date" class="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg" readonly>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อเอกสาร <span class="text-red-500">*</span></label>
+                    <input type="text" id="doc-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่เอกสาร <span class="text-red-500">*</span></label>
+                    <select id="doc-category" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ไฟล์แนบ <span class="text-red-500">*</span></label>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition cursor-pointer" onclick="document.getElementById('doc-file').click()">
+                        <input type="file" id="doc-file" class="hidden" onchange="handleFileSelect(this)" required>
+                        <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                        <p class="text-sm text-gray-600" id="file-label">คลิกเพื่อเลือกไฟล์</p>
+                        <p class="text-xs text-gray-400 mt-1">PDF, Word, Excel, รูปภาพ (ไม่เกิน 5MB)</p>
+                    </div>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeModal('submit-modal')" class="px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition btn-touch">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition btn-touch"><i class="fas fa-paper-plane mr-2"></i>ส่งเอกสาร</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Document Modal -->
+    <div id="edit-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl h-full sm:h-auto sm:max-h-[90vh] overflow-y-auto fade-in">
+            <div class="p-4 sm:p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-edit text-orange-600 mr-2"></i>แก้ไขเอกสาร</h3>
+                <button onclick="closeModal('edit-modal')" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="edit-form" class="p-4 sm:p-6 space-y-4">
+                <input type="hidden" id="edit-doc-id">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">รหัสเอกสาร</label>
+                        <input type="text" id="edit-doc-code" class="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่แก้ไข</label>
+                        <input type="text" id="edit-doc-date" class="w-full px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg" readonly>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อเอกสาร <span class="text-red-500">*</span></label>
+                    <input type="text" id="edit-doc-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่เอกสาร <span class="text-red-500">*</span></label>
+                    <select id="edit-doc-category" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required></select>
+                </div>
+                <div class="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-2">
+                    <p class="text-sm text-orange-800"><i class="fas fa-exclamation-circle mr-2"></i><strong>คำแนะนำจากผู้ตรวจ:</strong> <span id="edit-return-comment">-</span></p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ไฟล์แนบใหม่ (ถ้าต้องการเปลี่ยน)</label>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition cursor-pointer" onclick="document.getElementById('edit-doc-file').click()">
+                        <input type="file" id="edit-doc-file" class="hidden" onchange="handleEditFileSelect(this)">
+                        <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                        <p class="text-sm text-gray-600" id="edit-file-label">คลิกเพื่อเลือกไฟล์ใหม่</p>
+                        <p class="text-xs text-gray-400 mt-1">ไฟล์เดิม: <span id="edit-current-file">-</span></p>
+                    </div>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeModal('edit-modal')" class="px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition btn-touch">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition btn-touch"><i class="fas fa-redo mr-2"></i>ส่งเอกสารแก้ไข</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Review Modal -->
+    <div id="review-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-3xl h-full sm:h-auto sm:max-h-[90vh] overflow-y-auto fade-in">
+            <div class="p-4 sm:p-6 border-b flex justify-between items-center bg-gray-50 sticky top-0 z-10">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-clipboard-check text-indigo-600 mr-2"></i>ตรวจสอบเอกสาร</h3>
+                <button onclick="closeModal('review-modal')" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-4 sm:p-6 space-y-5" id="review-content"></div>
+        </div>
+    </div>
+
+    <!-- Document Viewer Modal -->
+    <div id="viewer-modal" class="modal fixed inset-0 bg-black bg-opacity-60 items-center justify-center z-[60] p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-5xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col fade-in">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-none sm:rounded-t-2xl flex-shrink-0">
+                <div class="flex items-center gap-3 min-w-0">
+                    <i class="fas fa-file-alt text-blue-600 text-xl flex-shrink-0"></i>
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-gray-900 truncate text-sm sm:text-base" id="viewer-filename">document.pdf</h3>
+                        <p class="text-xs text-gray-500" id="viewer-meta">PDF • 2.4 MB</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <a id="viewer-download" href="#" download class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition btn-touch"><i class="fas fa-download mr-1"></i><span class="hidden sm:inline"> ดาวน์โหลด</span></a>
+                    <button onclick="closeModal('viewer-modal')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-200 transition"><i class="fas fa-times text-gray-600"></i></button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-auto p-2 sm:p-4 bg-gray-100 doc-viewer-content" id="viewer-body"></div>
+        </div>
+    </div>
+
+    <!-- User Add/Edit Modal -->
+    <div id="user-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-lg h-full sm:h-auto sm:max-h-[90vh] overflow-y-auto fade-in">
+            <div class="p-4 sm:p-6 border-b flex justify-between items-center sticky top-0 bg-white z-10">
+                <h3 class="text-lg font-bold text-gray-900" id="user-modal-title">เพิ่มผู้ใช้งาน</h3>
+                <button onclick="closeModal('user-modal')" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="user-form" class="p-4 sm:p-6 space-y-4">
+                <input type="hidden" id="user-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล <span class="text-red-500">*</span></label>
+                    <input type="text" id="user-form-name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล <span class="text-red-500">*</span></label>
+                    <input type="email" id="user-form-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ฝ่าย <span class="text-red-500">*</span></label>
+                        <select id="user-form-dept" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">สิทธิ์ <span class="text-red-500">*</span></label>
+                        <select id="user-form-role" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" required>
+                            <option value="Submitter">ผู้ส่งเอกสาร</option>
+                            <option value="Reviewer">ผู้ตรวจเอกสาร</option>
+                            <option value="Admin">ผู้ดูแลระบบ</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน <span class="text-red-500" id="pwd-required">*</span></label>
+                    <input type="password" id="user-form-password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base" minlength="6">
+                    <p class="text-xs text-gray-500 mt-1" id="pwd-hint">เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน (กรณีแก้ไข)</p>
+                </div>
+                <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeModal('user-modal')" class="px-4 py-3 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition btn-touch">ยกเลิก</button>
+                    <button type="submit" class="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition btn-touch">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full sm:max-w-lg h-full sm:h-auto sm:max-h-[85vh] flex flex-col fade-in">
+            <div class="p-4 sm:p-6 border-b flex justify-between items-center flex-shrink-0">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-cog text-gray-600 mr-2"></i>ตั้งค่าระบบ</h3>
+                <button onclick="closeModal('settings-modal')" class="text-gray-400 hover:text-gray-600 p-2"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1 bg-gray-50">
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-medium text-gray-900"><i class="fas fa-folder text-yellow-500 mr-2"></i>หมวดหมู่เอกสาร</h4>
+                        <button onclick="addCategory()" class="text-sm text-blue-600 hover:text-blue-800 px-3 py-1 bg-blue-50 rounded-lg font-medium"><i class="fas fa-plus mr-1"></i>เพิ่ม</button>
+                    </div>
+                    <div id="category-list" class="space-y-2"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-medium text-gray-900"><i class="fas fa-users-cog text-indigo-500 mr-2"></i>รายชื่อฝ่าย</h4>
+                        <button onclick="addDepartment()" class="text-sm text-blue-600 hover:text-blue-800 px-3 py-1 bg-blue-50 rounded-lg font-medium"><i class="fas fa-plus mr-1"></i>เพิ่ม</button>
+                    </div>
+                    <div id="dept-list" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== DATA STORE (NEW SAFEMODE VERSION) ====================
+        // !!! ถ้าได้ URL จาก Google Apps Script (ตอนกด Deploy) ก็นำมาวางในเครื่องหมาย "" ด้านล่างนี้ได้เลยครับ !!!
+        const WEB_APP_URL = "";
+
+        const DB = {
+            _cache: { users: [], docs: [], settings: {} },
+            
+            async init() {
+                // โหลดค่าตั้งต้นจากเครื่องเผื่อไว้ก่อน (ทำให้เว็บเปิดได้และล็อกอินได้ปกติแม้จะยังไม่เชื่อม Sheets)
+                this._loadLocalDefaults();
+
+                if (!WEB_APP_URL) {
+                    return;
+                }
+
+                try {
+                    showToast('กำลังโหลดข้อมูลเชื่อมต่อระบบกลาง...', 'info');
+                    const res = await fetch(`${WEB_APP_URL}?action=getAll`);
+                    const data = await res.json();
+                    if (data && data.users && data.users.length > 0) {
+                        this._cache.users = data.users;
+                        this._cache.docs = data.docs || [];
+                        this._cache.settings = data.settings || {};
+                        showToast('เชื่อมต่อฐานข้อมูล Sheets สำเร็จ', 'success');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    showToast('ล้มเหลวในการเชื่อมต่อ Sheets (กำลังใช้ข้อมูลสำรองในคอมพิวเตอร์)', 'warning');
+                }
+            },
+            _loadLocalDefaults() {
+                this._cache.users = JSON.parse(localStorage.getItem('docreview_users') || '[]');
+                this._cache.docs = JSON.parse(localStorage.getItem('docreview_docs') || '[]');
+                this._cache.settings = JSON.parse(localStorage.getItem('docreview_settings') || '{}');
+                
+                // คืนค่าบัญชีทดลองให้กรณีที่ข้อมูลในเครื่องถูกล้างจนเกลี้ยง
+                if (this._cache.users.length === 0) {
+                    this._cache.users = [
+                        { id: 1, email: 'admin@company.com', name: 'ผู้ดูแลระบบ', department: 'นายกสโมสร', role: 'Admin', password: 'admin123' },
+                        { id: 2, email: 'reviewer@company.com', name: 'คุณตรวจสอบ', department: 'รองฝ่ายบริหาร', role: 'Reviewer', password: 'reviewer123' },
+                        { id: 3, email: 'submitter@company.com', name: 'คุณส่งเอกสาร', department: 'ประชาสัมพันธ์และทัศนศิลป์', role: 'Submitter', password: 'submitter123' }
+                    ];
+                    localStorage.setItem('docreview_users', JSON.stringify(this._cache.users));
+                }
+                if (!this._cache.settings.categories) {
+                    this._cache.settings = {
+                        categories: ['ชั่วโมงกิจกรรมนิสิต', 'เบิกจ่าย', 'อนุมัติโครงการ', 'เอกสารอื่นๆ'],
+                        departments: ['นายกสโมสร', 'รองฝ่ายบริหาร', 'ประชาสัมพันธ์และทัศนศิลป์', 'ฝ่ายทะเบียนนิสิต', 'ฝ่ายกิจกรรมและบันเทิง']
+                    };
+                    localStorage.setItem('docreview_settings', JSON.stringify(this._cache.settings));
+                }
+                if (this._cache.docs.length === 0) {
+                    this._cache.docs = [
+                        {
+                            id: 1,
+                            code: 'DOC-202605-001',
+                            name: 'ขออนุมัติโครงการเปิดโลกกิจกรรมชมรมดนตรีสากล',
+                            category: 'อนุมัติโครงการ',
+                            status: 'approved',
+                            submitterId: 3,
+                            submitterName: 'คุณส่งเอกสาร',
+                            department: 'ประชาสัมพันธ์และทัศนศิลป์',
+                            date: '28/05/2026 10:15',
+                            fileName: 'โครงการปฐมนิเทศชมรมดนตรี.pdf',
+                            fileSize: '1.4 MB',
+                            fileType: 'application/pdf',
+                            fileData: '',
+                            reviewerId: 2,
+                            reviewerName: 'คุณตรวจสอบ',
+                            reviewDate: '29/05/2026 14:00',
+                            comment: 'รายละเอียดครบถ้วน อนุมัติดำเนินโครงการได้',
+                            reviewerFileName: 'โครงการปฐมนิเทศชมรมดนตรี_signed.pdf',
+                            reviewerFileSize: '1.5 MB',
+                            reviewerFileType: 'application/pdf',
+                            reviewerFileData: ''
+                        },
+                        {
+                            id: 2,
+                            code: 'DOC-202605-002',
+                            name: 'ใบสำคัญเบิกจ่ายเงินค่าอุปกรณ์ตกแต่งบอร์ดสโมสร',
+                            category: 'เบิกจ่าย',
+                            status: 'pending',
+                            submitterId: 3,
+                            submitterName: 'คุณส่งเอกสาร',
+                            department: 'ประชาสัมพันธ์และทัศนศิลป์',
+                            date: '31/05/2026 11:30',
+                            fileName: 'ใบสำคัญรับเงิน_ตกแต่งบอร์ด.xlsx',
+                            fileSize: '450 KB',
+                            fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            fileData: ''
+                        },
+                        {
+                            id: 3,
+                            code: 'DOC-202605-003',
+                            name: 'ขอยื่นชั่วโมงกิจกรรมการบรรยายสุขภาวะนิสิตใหม่',
+                            category: 'ชั่วโมงกิจกรรมนิสิต',
+                            status: 'returned',
+                            submitterId: 3,
+                            submitterName: 'คุณส่งเอกสาร',
+                            department: 'ประชาสัมพันธ์และทัศนศิลป์',
+                            date: '30/05/2026 09:20',
+                            fileName: 'ขอชั่วโมงกิจกรรม_สุขภาวะ.pdf',
+                            fileSize: '2.1 MB',
+                            fileType: 'application/pdf',
+                            fileData: '',
+                            comment: 'กรุณาแนบใบรายชื่อและลายเซ็นนิสิตผู้เข้าร่วมโครงการทุกคนด้วยครับ',
+                            reviewerId: 2,
+                            reviewerName: 'คุณตรวจสอบ',
+                            reviewDate: '30/05/2026 16:30'
+                        }
+                    ];
+                    localStorage.setItem('docreview_docs', JSON.stringify(this._cache.docs));
+                }
+            },
+            getUsers() { return this._cache.users; },
+            async setUsers(data) {
+                this._cache.users = data;
+                localStorage.setItem('docreview_users', JSON.stringify(data));
+                await this._save('setUsers', data);
+            },
+            getDocs() { return this._cache.docs; },
+            async setDocs(data) {
+                this._cache.docs = data;
+                localStorage.setItem('docreview_docs', JSON.stringify(data));
+                await this._save('setDocs', data);
+            },
+            getSettings() { return this._cache.settings; },
+            async setSettings(data) {
+                this._cache.settings = data;
+                localStorage.setItem('docreview_settings', JSON.stringify(data));
+                await this._save('setSettings', data);
+            },
+            async _save(action, data) {
+                if (!WEB_APP_URL) return;
+                try {
+                    await fetch(WEB_APP_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'text/plain' }, 
+                        body: JSON.stringify({ action: action, data: data })
+                    });
+                } catch(e) {
+                    console.error(e);
+                }
+            }
+        };
+
+        // ==================== AUTH ====================
+        let currentUser = null;
+
+        function login(email, password) {
+            const users = DB.getUsers();
+            const user = users.find(u => u.email === email && u.password === password);
+            if (user) {
+                currentUser = user;
+                localStorage.setItem('docreview_session', JSON.stringify(user));
+                showApp();
+                return true;
+            }
+            return false;
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('docreview_session');
+            showLogin();
+        }
+
+        function checkSession() {
+            const session = localStorage.getItem('docreview_session');
+            if (session) {
+                currentUser = JSON.parse(session);
+                showApp();
+                return true;
+            }
+            showLogin();
+            return false;
+        }
+
+        // ==================== UI HELPERS ====================
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500', warning: 'bg-yellow-500' };
+            const icons = { success: 'check-circle', error: 'exclamation-circle', info: 'info-circle', warning: 'exclamation-triangle' };
+            toast.className = `toast flex items-center gap-2 px-4 sm:px-6 py-3 text-white rounded-lg shadow-lg ${colors[type]} text-sm sm:text-base`;
+            toast.innerHTML = `<i class="fas fa-${icons[type]}"></i><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function formatDateTime() {
+            const now = new Date();
+            return now.toLocaleDateString('th-TH') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+        }
+
+        function generateDocCode() {
+            const docs = DB.getDocs();
+            const now = new Date();
+            const prefix = `DOC-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}-`;
+            const existing = docs.filter(d => d.code.startsWith(prefix));
+            const seq = String(existing.length + 1).padStart(3, '0');
+            return prefix + seq;
+        }
+
+        function getStatusBadge(status) {
+            const map = {
+                pending: { class: 'status-pending', text: 'รอตรวจสอบ', icon: 'clock' },
+                approved: { class: 'status-approved', text: 'อนุมัติ', icon: 'check-circle' },
+                rejected: { class: 'status-rejected', text: 'ไม่อนุมัติ', icon: 'times-circle' },
+                returned: { class: 'status-returned', text: 'ส่งคืนให้แก้ไข', icon: 'undo' }
+            };
+            const s = map[status] || map.pending;
+            return `<span class="inline-flex items-center gap-1 px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${s.class}"><i class="fas fa-${s.icon}"></i> <span>${s.text}</span></span>`;
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+        }
+
+        function populateSelect(id, items, defaultValue = '') {
+            const select = document.getElementById(id);
+            if (!select) return;
+            select.innerHTML = items.map(item => `
+                <option value="${item}" ${item === defaultValue ? 'selected' : ''}>${item}</option>
+            `).join('');
+        }
+
+        function getCategoryIcon(cat) {
+            const map = {
+                'ชั่วโมงกิจกรรมนิสิต': 'fa-award text-purple-500 bg-purple-50 border-purple-100',
+                'เบิกจ่าย': 'fa-money-bill-wave text-emerald-500 bg-emerald-50 border-emerald-100',
+                'อนุมัติโครงการ': 'fa-clipboard-check text-blue-500 bg-blue-50 border-blue-100',
+                'เอกสารอื่นๆ': 'fa-folder text-amber-500 bg-amber-50 border-amber-100'
+            };
+            return map[cat] || 'fa-file text-indigo-500 bg-indigo-50 border-indigo-100';
+        }
+
+        // ==================== DOCUMENT VIEWER ====================
+        let currentFileData = null;
+
+        function openDocumentViewer(docId, isReviewerFile = false) {
+            const docs = DB.getDocs();
+            const doc = docs.find(d => d.id === docId);
+            if (!doc) return;
+
+            const fileName = isReviewerFile ? (doc.reviewerFileName || 'ไม่มีไฟล์') : doc.fileName;
+            const fileSize = isReviewerFile ? (doc.reviewerFileSize || '-') : doc.fileSize;
+            const fileType = isReviewerFile ? (doc.reviewerFileType || '') : doc.fileType;
+            const fileData = isReviewerFile ? doc.reviewerFileData : doc.fileData;
+
+            document.getElementById('viewer-filename').textContent = fileName;
+            document.getElementById('viewer-meta').textContent = `${fileType || 'ไฟล์'} • ${fileSize}`;
+
+            const body = document.getElementById('viewer-body');
+            currentFileData = fileData;
+
+            const downloadBtn = document.getElementById('viewer-download');
+            if (fileData) {
+                downloadBtn.href = fileData;
+                downloadBtn.download = fileName;
+                downloadBtn.classList.remove('hidden');
+            } else {
+                downloadBtn.classList.add('hidden');
+            }
+
+            const mime = fileType || '';
+            if (mime.startsWith('image/')) {
+                body.innerHTML = `<img src="${fileData}" alt="${fileName}" class="rounded-lg shadow-sm">`;
+            } else if (mime === 'application/pdf') {
+                if (fileData) {
+                    body.innerHTML = `<iframe src="${fileData}" title="${fileName}"></iframe>`;
+                } else {
+                    body.innerHTML = placeholderViewer(fileName, fileSize, mime, 'เอกสารตัวอย่าง (PDF) - ไม่มีไฟล์จริงในระบบออฟไลน์ (ทดลองดาวน์โหลดแทน)');
+                }
+            } else if (mime.includes('word') || mime.includes('excel') || mime.includes('powerpoint') || mime.includes('officedocument')) {
+                body.innerHTML = placeholderViewer(fileName, fileSize, mime, 'ไฟล์เอกสาร Microsoft Office - กรุณาดาวน์โหลดไฟล์นี้เพื่อเปิดบนเครื่องคอมพิวเตอร์ของคุณ');
+            } else {
+                body.innerHTML = placeholderViewer(fileName, fileSize, mime, 'ไม่สามารถแสดงตัวอย่างไฟล์ประเภทนี้บนหน้าเว็บได้โดยตรง กรุณาดาวน์โหลดเพื่อเปิดใช้งาน');
+            }
+
+            openModal('viewer-modal');
+        }
+
+        function placeholderViewer(fileName, fileSize, mime, message) {
+            const icon = mime.includes('pdf') ? 'fa-file-pdf text-red-500' : 
+                         mime.includes('word') ? 'fa-file-word text-blue-500' :
+                         mime.includes('excel') ? 'fa-file-excel text-green-500' :
+                         mime.includes('image') ? 'fa-file-image text-purple-500' : 'fa-file text-gray-500';
+            return `
+                <div class="flex flex-col items-center justify-center h-64 sm:h-96 text-center px-4">
+                    <i class="fas ${icon} text-4xl sm:text-6xl mb-4"></i>
+                    <h4 class="text-base sm:text-lg font-medium text-gray-900 mb-2">${fileName}</h4>
+                    <p class="text-xs sm:text-sm text-gray-500 mb-4">${fileSize} • ${mime}</p>
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 max-w-md">
+                        <p class="text-xs sm:text-sm text-yellow-800"><i class="fas fa-info-circle mr-2"></i>${message}</p>
+                    </div>
+                    ${currentFileData ? `<a href="${currentFileData}" download="${fileName}" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm btn-touch"><i class="fas fa-download mr-2"></i>ดาวน์โหลดไฟล์</a>` : ''}
+                </div>
+            `;
+        }
+
+        // ==================== PAGE NAVIGATION ====================
+        function showLogin() {
+            document.getElementById('login-page').classList.remove('hidden');
+            document.getElementById('register-page').classList.add('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+        }
+
+        function showRegister() {
+            document.getElementById('login-page').classList.add('hidden');
+            document.getElementById('register-page').classList.remove('hidden');
+            populateSelect('reg-dept', DB.getSettings().departments);
+        }
+
+        function showApp() {
+            document.getElementById('login-page').classList.add('hidden');
+            document.getElementById('register-page').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+
+            document.getElementById('user-name').textContent = currentUser.name;
+            document.getElementById('user-role').textContent = currentUser.role === 'Admin' ? 'ผู้ดูแลระบบ' : currentUser.role === 'Reviewer' ? 'ผู้ตรวจเอกสาร' : 'ผู้ส่งเอกสาร';
+            document.getElementById('user-avatar').textContent = currentUser.name.charAt(0);
+            document.getElementById('current-date').textContent = new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            renderSidebar();
+            navigateTo('dashboard');
+        }
+
+        function renderSidebar() {
+            const nav = document.getElementById('sidebar-nav');
+            const role = currentUser.role;
+            let items = [];
+
+            if (role === 'Submitter') {
+                items = [
+                    { id: 'dashboard', icon: 'file-alt', text: 'เอกสารของฉัน' },
+                    { id: 'submit', icon: 'plus-circle', text: 'ส่งเอกสารใหม่', action: 'openSubmitModal()' }
+                ];
+            } else if (role === 'Reviewer') {
+                items = [
+                    { id: 'pending', icon: 'clipboard-list', text: 'รอการตรวจสอบ' },
+                    { id: 'history', icon: 'history', text: 'ประวัติเอกสารทั้งหมด' }
+                ];
+            } else if (role === 'Admin') {
+                items = [
+                    { id: 'dashboard', icon: 'file-alt', text: 'เอกสารทั้งหมด' },
+                    { id: 'users', icon: 'users', text: 'จัดการผู้ใช้งาน' },
+                    { id: 'settings', icon: 'cog', text: 'ตั้งค่าระบบ', action: 'openSettings()' }
+                ];
+            }
+
+            nav.innerHTML = items.map(item => `
+                <button onclick="${item.action || `navigateTo('${item.id}'); toggleSidebarIfMobile()`}" class="w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition sidebar-item btn-touch" data-page="${item.id}">
+                    <i class="fas fa-${item.icon} w-5 text-center"></i>
+                    <span class="font-medium">${item.text}</span>
+                </button>
+            `).join('');
+        }
+
+        function toggleSidebarIfMobile() {
+            if (window.innerWidth < 1024) toggleSidebar();
+        }
+
+        function navigateTo(page) {
+            document.querySelectorAll('.sidebar-item').forEach(el => {
+                const isActive = el.dataset.page === page;
+                el.classList.toggle('bg-blue-50', isActive);
+                el.classList.toggle('text-blue-600', isActive);
+                el.classList.toggle('border-r-4', isActive);
+                el.classList.toggle('border-blue-600', isActive);
+            });
+
+            const content = document.getElementById('content-area');
+            const title = document.getElementById('page-title');
+
+            // Reset filters
+            window.currentSearch = '';
+            window.selectedCategory = '';
+            window.selectedStatus = '';
+
+            switch(page) {
+                case 'dashboard':
+                    title.textContent = currentUser.role === 'Admin' ? 'แดชบอร์ดผู้ดูแลระบบ' : 'เอกสารของฉัน';
+                    renderDashboard(content);
+                    break;
+                case 'pending':
+                    title.textContent = 'รอการตรวจสอบ';
+                    renderPending(content);
+                    break;
+                case 'history':
+                    title.textContent = 'ประวัติเอกสารทั้งหมด';
+                    renderHistory(content);
+                    break;
+                case 'users':
+                    title.textContent = 'จัดการผู้ใช้งาน';
+                    renderUserManagement(content);
+                    break;
+            }
+        }
+
+        // ==================== FILTERING & SEARCH GLOBALS ====================
+        window.currentSearch = '';
+        window.selectedCategory = '';
+        window.selectedStatus = '';
+
+        function filterDashboardDocs() {
+            const docs = DB.getDocs();
+            const isAdmin = currentUser.role === 'Admin';
+            let filtered = isAdmin ? docs : docs.filter(d => d.submitterId === currentUser.id);
+
+            // Filter by selected category
+            if (window.selectedCategory) {
+                filtered = filtered.filter(d => d.category === window.selectedCategory);
+            }
+
+            // Filter by selected status
+            if (window.selectedStatus) {
+                filtered = filtered.filter(d => d.status === window.selectedStatus);
+            }
+
+            // Filter by search query
+            if (window.currentSearch.trim() !== '') {
+                const query = window.currentSearch.toLowerCase();
+                filtered = filtered.filter(d => 
+                    d.name.toLowerCase().includes(query) || 
+                    d.code.toLowerCase().includes(query) || 
+                    (d.submitterName && d.submitterName.toLowerCase().includes(query))
+                );
+            }
+
+            renderDocTableBody(filtered);
+        }
+
+        // ==================== RENDERERS ====================
+        function renderDashboard(container) {
+            const docs = DB.getDocs();
+            const isAdmin = currentUser.role === 'Admin';
+            const filtered = isAdmin ? docs : docs.filter(d => d.submitterId === currentUser.id);
+
+            const stats = {
+                total: filtered.length,
+                pending: filtered.filter(d => d.status === 'pending').length,
+                approved: filtered.filter(d => d.status === 'approved').length,
+                rejected: filtered.filter(d => d.status === 'rejected').length,
+                returned: filtered.filter(d => d.status === 'returned').length
+            };
+
+            const categories = {};
+            filtered.forEach(d => {
+                if (!categories[d.category]) categories[d.category] = [];
+                categories[d.category].push(d);
+            });
+
+            const settings = DB.getSettings();
+            const allCategories = settings.categories || [];
+
+            let html = `
+                <!-- Stats Summary -->
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                    <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onclick="window.selectedStatus = ''; filterDashboardDocs(); document.getElementById('doc-status-filter').value='';">
+                        <div>
+                            <p class="text-xs sm:text-sm text-gray-500">ทั้งหมด</p>
+                            <p class="text-xl sm:text-2xl font-bold text-gray-900">${stats.total}</p>
+                        </div>
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center"><i class="fas fa-file-alt text-blue-600 text-xs sm:text-sm"></i></div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onclick="window.selectedStatus = 'pending'; filterDashboardDocs(); document.getElementById('doc-status-filter').value='pending';">
+                        <div>
+                            <p class="text-xs sm:text-sm text-gray-500">รอตรวจ</p>
+                            <p class="text-xl sm:text-2xl font-bold text-yellow-600">${stats.pending}</p>
+                        </div>
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-100 rounded-full flex items-center justify-center"><i class="fas fa-clock text-yellow-600 text-xs sm:text-sm"></i></div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onclick="window.selectedStatus = 'approved'; filterDashboardDocs(); document.getElementById('doc-status-filter').value='approved';">
+                        <div>
+                            <p class="text-xs sm:text-sm text-gray-500">อนุมัติ</p>
+                            <p class="text-xl sm:text-2xl font-bold text-green-600">${stats.approved}</p>
+                        </div>
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-full flex items-center justify-center"><i class="fas fa-check-circle text-green-600 text-xs sm:text-sm"></i></div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onclick="window.selectedStatus = 'rejected'; filterDashboardDocs(); document.getElementById('doc-status-filter').value='rejected';">
+                        <div>
+                            <p class="text-xs sm:text-sm text-gray-500">ไม่อนุมัติ</p>
+                            <p class="text-xl sm:text-2xl font-bold text-red-600">${stats.rejected}</p>
+                        </div>
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 rounded-full flex items-center justify-center"><i class="fas fa-times-circle text-red-600 text-xs sm:text-sm"></i></div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onclick="window.selectedStatus = 'returned'; filterDashboardDocs(); document.getElementById('doc-status-filter').value='returned';">
+                        <div>
+                            <p class="text-xs sm:text-sm text-gray-500">ส่งคืนแก้ไข</p>
+                            <p class="text-xl sm:text-2xl font-bold text-orange-600">${stats.returned}</p>
+                        </div>
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 rounded-full flex items-center justify-center"><i class="fas fa-undo text-orange-600 text-xs sm:text-sm"></i></div>
+                    </div>
+                </div>
+
+                <!-- Folder Section (Categories) -->
+                <div class="mb-6 sm:mb-8">
+                    <h3 class="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2"><i class="fas fa-folder-open text-yellow-500"></i> หมวดหมู่เอกสาร</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        ${allCategories.map(cat => {
+                            const catDocs = categories[cat] || [];
+                            const iconStyle = getCategoryIcon(cat);
+                            const isSelected = window.selectedCategory === cat;
+                            return `
+                                <div onclick="selectCategoryFilter('${cat}')" class="folder-card bg-white p-4 sm:p-5 rounded-xl shadow-sm border ${isSelected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-100'} cursor-pointer flex items-center gap-4">
+                                    <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg ${iconStyle.split(' ')[1]} ${iconStyle.split(' ')[2]}">
+                                        <i class="fas ${iconStyle.split(' ')[0]}"></i>
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <h4 class="font-semibold text-gray-800 truncate text-sm sm:text-base">${cat}</h4>
+                                        <p class="text-xs sm:text-sm text-gray-500">${catDocs.length} รายการ</p>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Search & Filters -->
+                <div class="flex flex-col md:flex-row gap-3 mb-4 justify-between items-center bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div class="relative w-full md:w-80">
+                        <i class="fas fa-search absolute left-3.5 top-3.5 text-gray-400"></i>
+                        <input type="text" id="doc-search" placeholder="ค้นหารหัส หรือชื่อเอกสาร..." class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm focus:border-transparent" value="${window.currentSearch || ''}" oninput="window.currentSearch = this.value; filterDashboardDocs();">
+                    </div>
+                    <div class="flex gap-2 w-full md:w-auto">
+                        <select id="doc-status-filter" class="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm w-full md:w-auto bg-white" onchange="window.selectedStatus = this.value; filterDashboardDocs();">
+                            <option value="">ทุกสถานะ</option>
+                            <option value="pending" ${window.selectedStatus === 'pending' ? 'selected' : ''}>รอตรวจสอบ</option>
+                            <option value="approved" ${window.selectedStatus === 'approved' ? 'selected' : ''}>อนุมัติ</option>
+                            <option value="rejected" ${window.selectedStatus === 'rejected' ? 'selected' : ''}>ไม่อนุมัติ</option>
+                            <option value="returned" ${window.selectedStatus === 'returned' ? 'selected' : ''}>ส่งคืนให้แก้ไข</option>
+                        </select>
+                        ${window.selectedCategory || window.selectedStatus || window.currentSearch ? `
+                            <button onclick="clearAllFilters()" class="text-sm text-red-600 hover:text-red-800 bg-red-50 px-4 py-2 rounded-lg flex items-center gap-1 font-medium"><i class="fas fa-times-circle"></i> ล้างตัวกรอง</button>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Document List Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse mobile-table">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100 text-xs sm:text-sm font-semibold text-gray-600">
+                                    <th class="py-4 px-4 sm:px-6">รหัส</th>
+                                    <th class="py-4 px-4 sm:px-6">ชื่อเอกสาร</th>
+                                    ${isAdmin ? '<th class="py-4 px-4 sm:px-6">ผู้ส่ง / ฝ่าย</th>' : ''}
+                                    <th class="py-4 px-4 sm:px-6">หมวดหมู่</th>
+                                    <th class="py-4 px-4 sm:px-6">วันที่</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">สถานะ</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="doc-table-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+            renderDocTableBody(filtered);
+        }
+
+        function selectCategoryFilter(cat) {
+            window.selectedCategory = window.selectedCategory === cat ? '' : cat;
+            renderDashboard(document.getElementById('content-area'));
+        }
+
+        function clearAllFilters() {
+            window.selectedCategory = '';
+            window.selectedStatus = '';
+            window.currentSearch = '';
+            renderDashboard(document.getElementById('content-area'));
+        }
+
+        function renderDocTableBody(docsList) {
+            const tbody = document.getElementById('doc-table-body');
+            const isAdmin = currentUser.role === 'Admin';
+            if (docsList.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${isAdmin ? 7 : 6}" class="py-12 text-center text-gray-500 text-sm">
+                            <i class="fas fa-folder-open text-4xl text-gray-300 mb-3 block"></i>
+                            ไม่พบรายการเอกสารในระบบ
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = docsList.map(doc => {
+                let actionBtns = `
+                    <button onclick="openDocumentViewer(${doc.id})" class="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-semibold transition" title="ดูตัวอย่างเอกสาร"><i class="fas fa-eye"></i> ดูตัวอย่าง</button>
+                `;
+
+                if (doc.status === 'returned' && doc.submitterId === currentUser.id) {
+                    actionBtns += `
+                        <button onclick="openEditModal(${doc.id})" class="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg text-xs font-semibold transition" title="แก้ไขเอกสาร"><i class="fas fa-edit"></i> แก้ไข</button>
+                    `;
+                }
+
+                if (doc.status === 'approved' && doc.reviewerFileName) {
+                    actionBtns += `
+                        <button onclick="openDocumentViewer(${doc.id}, true)" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition" title="ดูเอกสารที่ลงนามแล้ว"><i class="fas fa-file-signature"></i> ใบอนุมัติ</button>
+                    `;
+                }
+
+                if (doc.submitterId === currentUser.id || isAdmin) {
+                    actionBtns += `
+                        <button onclick="deleteDocument(${doc.id})" class="inline-flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition" title="ลบเอกสาร"><i class="fas fa-trash-alt text-xs"></i></button>
+                    `;
+                }
+
+                return `
+                    <tr class="hover-row transition text-xs sm:text-sm">
+                        <td class="py-4 px-4 sm:px-6 font-bold text-gray-900">${doc.code}</td>
+                        <td class="py-4 px-4 sm:px-6 min-w-[200px]">
+                            <div class="font-medium text-gray-800 truncate max-w-xs sm:max-w-md">${doc.name}</div>
+                            <div class="text-xs text-gray-400 truncate max-w-xs mt-0.5">${doc.fileName} (${doc.fileSize})</div>
+                        </td>
+                        ${isAdmin ? `
+                            <td class="py-4 px-4 sm:px-6 text-gray-600">
+                                <div class="font-medium">${doc.submitterName}</div>
+                                <div class="text-xs text-gray-400">${doc.department}</div>
+                            </td>
+                        ` : ''}
+                        <td class="py-4 px-4 sm:px-6 text-gray-600 font-medium">${doc.category}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-500">${doc.date}</td>
+                        <td class="py-4 px-4 sm:px-6 text-center">${getStatusBadge(doc.status)}</td>
+                        <td class="py-4 px-4 sm:px-6">
+                            <div class="flex items-center justify-center gap-2 action-btns">${actionBtns}</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ==================== REVIEWER pending PAGE ====================
+        function renderPending(container) {
+            const docs = DB.getDocs();
+            let pendingDocs = docs.filter(d => d.status === 'pending');
+
+            container.innerHTML = `
+                <!-- Search -->
+                <div class="flex flex-col md:flex-row gap-3 mb-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div class="relative w-full md:w-80">
+                        <i class="fas fa-search absolute left-3.5 top-3.5 text-gray-400"></i>
+                        <input type="text" id="pending-search" placeholder="ค้นหารหัส, ชื่อ หรือฝ่าย..." class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm focus:border-transparent" oninput="filterPendingTable(this.value)">
+                    </div>
+                    <div class="text-sm font-semibold text-gray-600" id="pending-count">รอตรวจทั้งหมด: ${pendingDocs.length} รายการ</div>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse mobile-table">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100 text-xs sm:text-sm font-semibold text-gray-600 font-medium">
+                                    <th class="py-4 px-4 sm:px-6">รหัส</th>
+                                    <th class="py-4 px-4 sm:px-6">ชื่อเอกสาร</th>
+                                    <th class="py-4 px-4 sm:px-6">ผู้ส่ง</th>
+                                    <th class="py-4 px-4 sm:px-6">ฝ่าย</th>
+                                    <th class="py-4 px-4 sm:px-6">หมวดหมู่</th>
+                                    <th class="py-4 px-4 sm:px-6">วันที่ส่ง</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pending-table-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            renderPendingTableBody(pendingDocs);
+        }
+
+        function renderPendingTableBody(docsList) {
+            const tbody = document.getElementById('pending-table-body');
+            if (docsList.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="py-12 text-center text-gray-500 text-sm">
+                            <i class="fas fa-check-circle text-4xl text-green-300 mb-3 block"></i>
+                            ไม่มีเอกสารคงค้างรอการตรวจสอบ
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = docsList.map(doc => `
+                <tr class="hover-row transition text-xs sm:text-sm">
+                    <td class="py-4 px-4 sm:px-6 font-bold text-gray-900">${doc.code}</td>
+                    <td class="py-4 px-4 sm:px-6 min-w-[200px]">
+                        <div class="font-medium text-gray-800 truncate max-w-xs">${doc.name}</div>
+                        <div class="text-xs text-gray-400 truncate max-w-xs mt-0.5">${doc.fileName} (${doc.fileSize})</div>
+                    </td>
+                    <td class="py-4 px-4 sm:px-6 text-gray-700">${doc.submitterName}</td>
+                    <td class="py-4 px-4 sm:px-6 text-gray-600 font-medium">${doc.department}</td>
+                    <td class="py-4 px-4 sm:px-6 text-gray-600">${doc.category}</td>
+                    <td class="py-4 px-4 sm:px-6 text-gray-500">${doc.date}</td>
+                    <td class="py-4 px-4 sm:px-6 text-center">
+                        <button onclick="openReviewModal(${doc.id})" class="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-xs font-bold transition btn-touch">
+                            <i class="fas fa-clipboard-check"></i> ตรวจเอกสาร
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterPendingTable(val) {
+            const docs = DB.getDocs();
+            let pendingDocs = docs.filter(d => d.status === 'pending');
+            if (val.trim() !== '') {
+                const query = val.toLowerCase();
+                pendingDocs = pendingDocs.filter(d => 
+                    d.name.toLowerCase().includes(query) || 
+                    d.code.toLowerCase().includes(query) || 
+                    d.submitterName.toLowerCase().includes(query) || 
+                    d.department.toLowerCase().includes(query)
+                );
+            }
+            document.getElementById('pending-count').textContent = `รอตรวจทั้งหมด: ${pendingDocs.length} รายการ`;
+            renderPendingTableBody(pendingDocs);
+        }
+
+        // ==================== REVIEWER HISTORY PAGE ====================
+        function renderHistory(container) {
+            const docs = DB.getDocs();
+
+            container.innerHTML = `
+                <!-- Filters -->
+                <div class="flex flex-col md:flex-row gap-3 mb-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div class="relative w-full md:w-80">
+                        <i class="fas fa-search absolute left-3.5 top-3.5 text-gray-400"></i>
+                        <input type="text" id="history-search" placeholder="ค้นหารหัส, ชื่อ หรือฝ่าย..." class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm focus:border-transparent" oninput="filterHistoryTable()">
+                    </div>
+                    <div class="flex gap-2 w-full md:w-auto">
+                        <select id="history-status" class="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm w-full md:w-auto bg-white" onchange="filterHistoryTable()">
+                            <option value="">ทุกสถานะ</option>
+                            <option value="approved">อนุมัติ</option>
+                            <option value="rejected">ไม่อนุมัติ</option>
+                            <option value="returned">ส่งคืนให้แก้ไข</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse mobile-table">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100 text-xs sm:text-sm font-semibold text-gray-600">
+                                    <th class="py-4 px-4 sm:px-6">รหัส</th>
+                                    <th class="py-4 px-4 sm:px-6">ชื่อเอกสาร</th>
+                                    <th class="py-4 px-4 sm:px-6">ผู้ส่ง</th>
+                                    <th class="py-4 px-4 sm:px-6">ฝ่าย</th>
+                                    <th class="py-4 px-4 sm:px-6">หมวดหมู่</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">สถานะ</th>
+                                    <th class="py-4 px-4 sm:px-6">ผู้ตรวจ</th>
+                                    <th class="py-4 px-4 sm:px-6">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            renderHistoryTableBody(docs);
+        }
+
+        function renderHistoryTableBody(docsList) {
+            const tbody = document.getElementById('history-table-body');
+            if (docsList.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="py-12 text-center text-gray-500 text-sm">
+                            <i class="fas fa-history text-4xl text-gray-300 mb-3 block"></i>
+                            ไม่พบรายการประวัติในระบบ
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = docsList.map(doc => {
+                let actionBtns = `
+                    <button onclick="openDocumentViewer(${doc.id})" class="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-semibold transition" title="ดูตัวอย่างต้นฉบับ"><i class="fas fa-eye"></i> ดูต้นฉบับ</button>
+                `;
+
+                if (doc.status === 'approved' && doc.reviewerFileName) {
+                    actionBtns += `
+                        <button onclick="openDocumentViewer(${doc.id}, true)" class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition" title="ดูใบลงนาม"><i class="fas fa-file-signature"></i> ใบอนุมัติ</button>
+                    `;
+                }
+
+                return `
+                    <tr class="hover-row transition text-xs sm:text-sm">
+                        <td class="py-4 px-4 sm:px-6 font-bold text-gray-900">${doc.code}</td>
+                        <td class="py-4 px-4 sm:px-6 min-w-[180px]">
+                            <div class="font-medium text-gray-800 truncate max-w-xs">${doc.name}</div>
+                            <div class="text-xs text-gray-400 mt-0.5">ส่งเมื่อ: ${doc.date}</div>
+                        </td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-700">${doc.submitterName}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-600 font-medium">${doc.department}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-600">${doc.category}</td>
+                        <td class="py-4 px-4 sm:px-6 text-center">${getStatusBadge(doc.status)}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-600">
+                            ${doc.reviewerName ? `
+                                <div class="font-medium text-xs sm:text-sm">${doc.reviewerName}</div>
+                                <div class="text-[10px] sm:text-xs text-gray-400 mt-0.5">${doc.reviewDate}</div>
+                            ` : '<span class="text-gray-400">-</span>'}
+                        </td>
+                        <td class="py-4 px-4 sm:px-6">
+                            <div class="flex gap-2 action-btns">${actionBtns}</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterHistoryTable() {
+            const query = document.getElementById('history-search').value.toLowerCase();
+            const status = document.getElementById('history-status').value;
+            const docs = DB.getDocs();
+
+            let filtered = docs;
+            if (status) filtered = filtered.filter(d => d.status === status);
+            if (query.trim() !== '') {
+                filtered = filtered.filter(d => 
+                    d.name.toLowerCase().includes(query) || 
+                    d.code.toLowerCase().includes(query) || 
+                    d.submitterName.toLowerCase().includes(query) || 
+                    d.department.toLowerCase().includes(query)
+                );
+            }
+            renderHistoryTableBody(filtered);
+        }
+
+        // ==================== ADMIN USER MANAGEMENT ====================
+        function renderUserManagement(container) {
+            const users = DB.getUsers();
+
+            container.innerHTML = `
+                <!-- Toolbar -->
+                <div class="flex flex-col sm:flex-row gap-3 mb-4 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div class="relative w-full sm:w-80">
+                        <i class="fas fa-search absolute left-3.5 top-3.5 text-gray-400"></i>
+                        <input type="text" id="user-search" placeholder="ค้นหาชื่อ หรืออีเมล..." class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm focus:border-transparent" oninput="filterUserTable(this.value)">
+                    </div>
+                    <button onclick="openUserModal()" class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition text-sm btn-touch shadow-sm shadow-blue-100">
+                        <i class="fas fa-user-plus"></i> เพิ่มผู้ใช้งานใหม่
+                    </button>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse mobile-table">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-100 text-xs sm:text-sm font-semibold text-gray-600">
+                                    <th class="py-4 px-4 sm:px-6">ชื่อ-นามสกุล</th>
+                                    <th class="py-4 px-4 sm:px-6">อีเมล</th>
+                                    <th class="py-4 px-4 sm:px-6">ฝ่าย</th>
+                                    <th class="py-4 px-4 sm:px-6">สิทธิ์</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">รหัสผ่าน</th>
+                                    <th class="py-4 px-4 sm:px-6 text-center">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="user-table-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            renderUserTableBody(users);
+        }
+
+        function renderUserTableBody(usersList) {
+            const tbody = document.getElementById('user-table-body');
+            tbody.innerHTML = usersList.map(user => {
+                let roleColor = 'bg-gray-100 text-gray-800';
+                if (user.role === 'Admin') roleColor = 'bg-blue-100 text-blue-800';
+                else if (user.role === 'Reviewer') roleColor = 'bg-indigo-100 text-indigo-800';
+                else roleColor = 'bg-green-100 text-green-800';
+
+                return `
+                    <tr class="hover-row transition text-xs sm:text-sm">
+                        <td class="py-4 px-4 sm:px-6 font-bold text-gray-900">${user.name}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-600">${user.email}</td>
+                        <td class="py-4 px-4 sm:px-6 text-gray-600 font-medium">${user.department}</td>
+                        <td class="py-4 px-4 sm:px-6">
+                            <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${roleColor}">${user.role}</span>
+                        </td>
+                        <td class="py-4 px-4 sm:px-6 text-center text-xs font-mono text-gray-400 font-semibold" title="รหัสผ่านผู้ใช้งาน">${user.password}</td>
+                        <td class="py-4 px-4 sm:px-6 text-center">
+                            <div class="flex justify-center gap-2">
+                                <button onclick="openUserModal(${user.id})" class="inline-flex items-center justify-center w-8 h-8 bg-yellow-50 text-yellow-600 hover:bg-yellow-100 rounded-lg transition" title="แก้ไขผู้ใช้งาน"><i class="fas fa-edit text-xs"></i></button>
+                                <button onclick="deleteUser(${user.id})" class="inline-flex items-center justify-center w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition" title="ลบผู้ใช้งาน"><i class="fas fa-trash-alt text-xs"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterUserTable(val) {
+            const users = DB.getUsers();
+            let filtered = users;
+            if (val.trim() !== '') {
+                const query = val.toLowerCase();
+                filtered = users.filter(u => u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query));
+            }
+            renderUserTableBody(filtered);
+        }
+
+        // ==================== DOC CREATION & FILE HANDLING ====================
+        let uploadedFile = null;
+
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('ขนาดไฟล์ห้ามเกิน 5MB', 'error');
+                input.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                uploadedFile = {
+                    name: file.name,
+                    size: formatBytes(file.size),
+                    type: file.type,
+                    data: e.target.result
+                };
+                document.getElementById('file-label').innerHTML = `<i class="fas fa-file-alt text-blue-600 text-lg mr-1"></i> <span class="font-semibold text-gray-800">${file.name}</span>`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        let editUploadedFile = null;
+
+        function handleEditFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('ขนาดไฟล์ห้ามเกิน 5MB', 'error');
+                input.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                editUploadedFile = {
+                    name: file.name,
+                    size: formatBytes(file.size),
+                    type: file.type,
+                    data: e.target.result
+                };
+                document.getElementById('edit-file-label').innerHTML = `<i class="fas fa-file-alt text-orange-600 text-lg mr-1"></i> <span class="font-semibold text-gray-800">${file.name}</span>`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        let reviewerUploadedFile = null;
+
+        function handleReviewerFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                reviewerUploadedFile = {
+                    name: file.name,
+                    size: formatBytes(file.size),
+                    type: file.type,
+                    data: e.target.result
+                };
+                document.getElementById('reviewer-file-label').innerHTML = `<i class="fas fa-check text-green-600 text-lg mr-1"></i> <span class="font-semibold text-gray-800">${file.name}</span>`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // ==================== MODAL ACTIONS & SUMBITS ====================
+        function openSubmitModal() {
+            document.getElementById('submit-form').reset();
+            uploadedFile = null;
+            document.getElementById('file-label').innerHTML = 'คลิกเพื่อเลือกไฟล์';
+            document.getElementById('doc-code').value = generateDocCode();
+            document.getElementById('doc-date').value = formatDateTime();
+            populateSelect('doc-category', DB.getSettings().categories);
+            openModal('submit-modal');
+        }
+
+        async function submitDocumentForm(e) {
+            e.preventDefault();
+            if (!uploadedFile) {
+                showToast('กรุณาเลือกไฟล์เอกสารแนบ', 'error');
+                return;
+            }
+
+            const docs = DB.getDocs();
+            const newDoc = {
+                id: Date.now(),
+                code: document.getElementById('doc-code').value,
+                name: document.getElementById('doc-name').value,
+                category: document.getElementById('doc-category').value,
+                status: 'pending',
+                submitterId: currentUser.id,
+                submitterName: currentUser.name,
+                department: currentUser.department,
+                date: document.getElementById('doc-date').value,
+                fileName: uploadedFile.name,
+                fileSize: uploadedFile.size,
+                fileType: uploadedFile.type,
+                fileData: uploadedFile.data
+            };
+
+            docs.unshift(newDoc);
+            await DB.setDocs(docs);
+            closeModal('submit-modal');
+            showToast('ส่งเอกสารเข้าระบบสำเร็จ', 'success');
+            renderDashboard(document.getElementById('content-area'));
+        }
+
+        function openEditModal(docId) {
+            const docs = DB.getDocs();
+            const doc = docs.find(d => d.id === docId);
+            if (!doc) return;
+
+            document.getElementById('edit-doc-id').value = doc.id;
+            document.getElementById('edit-doc-code').value = doc.code;
+            document.getElementById('edit-doc-date').value = formatDateTime();
+            document.getElementById('edit-doc-name').value = doc.name;
+            document.getElementById('edit-return-comment').textContent = doc.comment || 'ไม่มีความเห็นเพิ่มเติม';
+            document.getElementById('edit-current-file').textContent = doc.fileName;
+
+            populateSelect('edit-doc-category', DB.getSettings().categories, doc.category);
+            editUploadedFile = null;
+            document.getElementById('edit-file-label').innerHTML = 'คลิกเพื่อเลือกไฟล์ใหม่';
+
+            openModal('edit-modal');
+        }
+
+        async function submitEditForm(e) {
+            e.preventDefault();
+            const id = parseInt(document.getElementById('edit-doc-id').value);
+            const docs = DB.getDocs();
+            const idx = docs.findIndex(d => d.id === id);
+            if (idx === -1) return;
+
+            docs[idx].name = document.getElementById('edit-doc-name').value;
+            docs[idx].category = document.getElementById('edit-doc-category').value;
+            docs[idx].date = document.getElementById('edit-doc-date').value;
+            docs[idx].status = 'pending'; // Reset to pending for re-review
+
+            if (editUploadedFile) {
+                docs[idx].fileName = editUploadedFile.name;
+                docs[idx].fileSize = editUploadedFile.size;
+                docs[idx].fileType = editUploadedFile.type;
+                docs[idx].fileData = editUploadedFile.data;
+            }
+
+            await DB.setDocs(docs);
+            closeModal('edit-modal');
+            showToast('ส่งไฟล์เอกสารแก้ไขสำเร็จ', 'success');
+            renderDashboard(document.getElementById('content-area'));
+        }
+
+        async function deleteDocument(docId) {
+            if (!confirm('ยืนยันว่าต้องการลบเอกสารนี้ออกจากระบบหรือไม่?')) return;
+            const docs = DB.getDocs();
+            const filtered = docs.filter(d => d.id !== docId);
+            await DB.setDocs(filtered);
+            showToast('ลบเอกสารเรียบร้อยแล้ว', 'success');
+            renderDashboard(document.getElementById('content-area'));
+        }
+
+        // ==================== REVIEW FLOW (REVIEW MODAL) ====================
+        let currentReviewDocId = null;
+
+        function openReviewModal(docId) {
+            currentReviewDocId = docId;
+            reviewerUploadedFile = null;
+
+            const docs = DB.getDocs();
+            const doc = docs.find(d => d.id === docId);
+            if (!doc) return;
+
+            const content = document.getElementById('review-content');
+            content.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">รหัสเอกสาร</div>
+                        <div class="font-bold text-gray-900 mt-0.5 text-lg">${doc.code}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">วันที่ส่ง</div>
+                        <div class="font-medium text-gray-800 mt-0.5">${doc.date}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">ชื่อเอกสาร</div>
+                        <div class="font-semibold text-gray-900 mt-0.5 truncate">${doc.name}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">หมวดหมู่</div>
+                        <div class="font-medium text-indigo-600 mt-0.5">${doc.category}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">ผู้ส่งเอกสาร</div>
+                        <div class="font-semibold text-gray-800 mt-0.5">${doc.submitterName}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase">สังกัดฝ่าย</div>
+                        <div class="font-semibold text-gray-800 mt-0.5">${doc.department}</div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between border-t border-b py-3 border-gray-200">
+                    <div class="min-w-0">
+                        <div class="text-xs font-semibold text-gray-500">ไฟล์แนบจากผู้ส่ง</div>
+                        <div class="text-sm font-bold text-gray-900 truncate mt-0.5">${doc.fileName} (${doc.fileSize})</div>
+                    </div>
+                    <button onclick="openDocumentViewer(${doc.id})" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-xs font-semibold transition flex items-center gap-1.5 btn-touch"><i class="fas fa-eye"></i> ตรวจดูไฟล์</button>
+                </div>
+
+                <form id="review-decision-form" class="space-y-4" onsubmit="submitReview(event)">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">เลือกผลการตรวจสอบ <span class="text-red-500">*</span></label>
+                        <div class="grid grid-cols-3 gap-3">
+                            <label class="flex flex-col items-center justify-center p-3 border-2 border-gray-200 rounded-xl cursor-pointer hover:bg-green-50 hover:border-green-400 transition text-center select-none" id="lbl-approve">
+                                <input type="radio" name="decision" value="approved" class="hidden" required onclick="selectDecision('approved')">
+                                <i class="fas fa-check-circle text-2xl text-gray-400 mb-1" id="icon-approve"></i>
+                                <span class="text-xs font-bold text-gray-600" id="txt-approve">อนุมัติ</span>
+                            </label>
+                            <label class="flex flex-col items-center justify-center p-3 border-2 border-gray-200 rounded-xl cursor-pointer hover:bg-orange-50 hover:border-orange-400 transition text-center select-none" id="lbl-return">
+                                <input type="radio" name="decision" value="returned" class="hidden" onclick="selectDecision('returned')">
+                                <i class="fas fa-undo text-2xl text-gray-400 mb-1" id="icon-return"></i>
+                                <span class="text-xs font-bold text-gray-600" id="txt-return">ให้ส่งกลับแก้ไข</span>
+                            </label>
+                            <label class="flex flex-col items-center justify-center p-3 border-2 border-gray-200 rounded-xl cursor-pointer hover:bg-red-50 hover:border-red-400 transition text-center select-none" id="lbl-reject">
+                                <input type="radio" name="decision" value="rejected" class="hidden" onclick="selectDecision('rejected')">
+                                <i class="fas fa-times-circle text-2xl text-gray-400 mb-1" id="icon-reject"></i>
+                                <span class="text-xs font-bold text-gray-600" id="txt-reject">ไม่อนุมัติ</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ความเห็นผู้ตรวจสอบ / คำแนะนำแนบท้าย</label>
+                        <textarea id="review-comment" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm focus:border-transparent" rows="3" placeholder="ระบุเหตุผลในการส่งกลับ หรือการสั่งการเพิ่มเติม..."></textarea>
+                    </div>
+
+                    <div id="reviewer-file-section" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">แนบไฟล์ผลตรวจที่ลงนามแล้ว (ใบลงนาม/เอกสารอนุมัติ)</label>
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-green-500 transition cursor-pointer" onclick="document.getElementById('reviewer-file-input').click()">
+                            <input type="file" id="reviewer-file-input" class="hidden" onchange="handleReviewerFileSelect(this)">
+                            <i class="fas fa-cloud-upload-alt text-2xl text-gray-400 mb-1"></i>
+                            <p class="text-xs text-gray-600" id="reviewer-file-label">คลิกเพื่อแนบเอกสารใบอนุมัติผลตรวจ</p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-3">
+                        <button type="button" onclick="closeModal('review-modal')" class="px-4 py-2.5 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm font-semibold transition btn-touch">ยกเลิก</button>
+                        <button type="submit" class="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-bold transition btn-touch shadow-sm"><i class="fas fa-save mr-1.5"></i> บันทึกผลการตรวจ</button>
+                    </div>
+                </form>
+            `;
+            openModal('review-modal');
+        }
+
+        function selectDecision(decision) {
+            // Reset borders
+            ['approve', 'return', 'reject'].forEach(d => {
+                document.getElementById(`lbl-${d}`).className = "flex flex-col items-center justify-center p-3 border-2 border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition text-center select-none";
+                document.getElementById(`icon-${d}`).className = `fas fa-${d === 'approve' ? 'check-circle' : d === 'return' ? 'undo' : 'times-circle'} text-2xl text-gray-400 mb-1`;
+                document.getElementById(`txt-${d}`).className = "text-xs font-bold text-gray-600";
+            });
+
+            // Set active border style
+            const borderColors = { approve: 'border-green-500 bg-green-50 ring-2 ring-green-100', return: 'border-orange-500 bg-orange-50 ring-2 ring-orange-100', reject: 'border-red-500 bg-red-50 ring-2 ring-red-100' };
+            const iconColors = { approve: 'text-green-600', return: 'text-orange-600', reject: 'text-red-600' };
+            const txtColors = { approve: 'text-green-700', return: 'text-orange-700', reject: 'text-red-700' };
+
+            document.getElementById(`lbl-${decision}`).className = `flex flex-col items-center justify-center p-3 border-2 ${borderColors[decision]} rounded-xl cursor-pointer text-center select-none`;
+            document.getElementById(`icon-${decision}`).className = `fas fa-${decision === 'approve' ? 'check-circle' : decision === 'return' ? 'undo' : 'times-circle'} text-2xl ${iconColors[decision]} mb-1`;
+            document.getElementById(`txt-${decision}`).className = `text-xs font-bold ${txtColors[decision]}`;
+
+            // Show file upload only for approved status
+            const fileSec = document.getElementById('reviewer-file-section');
+            if (decision === 'approved') {
+                fileSec.classList.remove('hidden');
+            } else {
+                fileSec.classList.add('hidden');
+                reviewerUploadedFile = null;
+            }
+        }
+
+        async function submitReview(e) {
+            e.preventDefault();
+            const decisionInput = document.querySelector('input[name="decision"]:checked');
+            if (!decisionInput) {
+                showToast('กรุณาเลือกผลการตรวจสอบ', 'error');
+                return;
+            }
+
+            const decision = decisionInput.value;
+            const comment = document.getElementById('review-comment').value;
+
+            const docs = DB.getDocs();
+            const idx = docs.findIndex(d => d.id === currentReviewDocId);
+            if (idx === -1) return;
+
+            docs[idx].status = decision;
+            docs[idx].comment = comment;
+            docs[idx].reviewerId = currentUser.id;
+            docs[idx].reviewerName = currentUser.name;
+            docs[idx].reviewDate = formatDateTime();
+
+            if (decision === 'approved' && reviewerUploadedFile) {
+                docs[idx].reviewerFileName = reviewerUploadedFile.name;
+                docs[idx].reviewerFileSize = reviewerUploadedFile.size;
+                docs[idx].reviewerFileType = reviewerUploadedFile.type;
+                docs[idx].reviewerFileData = reviewerUploadedFile.data;
+            }
+
+            await DB.setDocs(docs);
+            closeModal('review-modal');
+            showToast('บันทึกผลการตรวจสอบสำเร็จ', 'success');
+            renderPending(document.getElementById('content-area'));
+        }
+
+        // ==================== USER MODAL ACTIONS ====================
+        function openUserModal(userId = null) {
+            const form = document.getElementById('user-form');
+            form.reset();
+
+            const isEdit = userId !== null;
+            document.getElementById('user-id').value = isEdit ? userId : '';
+            document.getElementById('user-modal-title').textContent = isEdit ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน';
+
+            populateSelect('user-form-dept', DB.getSettings().departments);
+
+            const pwdRequired = document.getElementById('pwd-required');
+            const pwdHint = document.getElementById('pwd-hint');
+            const pwdInput = document.getElementById('user-form-password');
+
+            if (isEdit) {
+                const users = DB.getUsers();
+                const user = users.find(u => u.id === userId);
+                if (!user) return;
+
+                document.getElementById('user-form-name').value = user.name;
+                document.getElementById('user-form-email').value = user.email;
+                document.getElementById('user-form-dept').value = user.department;
+                document.getElementById('user-form-role').value = user.role;
+
+                pwdRequired.classList.add('hidden');
+                pwdHint.classList.remove('hidden');
+                pwdInput.removeAttribute('required');
+            } else {
+                pwdRequired.classList.remove('hidden');
+                pwdHint.classList.add('hidden');
+                pwdInput.setAttribute('required', 'required');
+            }
+
+            openModal('user-modal');
+        }
+
+        async function submitUserForm(e) {
+            e.preventDefault();
+            const id = document.getElementById('user-id').value;
+            const name = document.getElementById('user-form-name').value;
+            const email = document.getElementById('user-form-email').value;
+            const dept = document.getElementById('user-form-dept').value;
+            const role = document.getElementById('user-form-role').value;
+            const password = document.getElementById('user-form-password').value;
+
+            const users = DB.getUsers();
+
+            if (id) {
+                // Edit mode
+                const idx = users.findIndex(u => u.id === parseInt(id));
+                if (idx === -1) return;
+
+                // Check email clash
+                const emailExist = users.find(u => u.email === email && u.id !== parseInt(id));
+                if (emailExist) {
+                    showToast('อีเมลนี้ถูกใช้งานแล้วในระบบ', 'error');
+                    return;
+                }
+
+                users[idx].name = name;
+                users[idx].email = email;
+                users[idx].department = dept;
+                users[idx].role = role;
+                if (password.trim() !== '') {
+                    users[idx].password = password;
+                }
+            } else {
+                // Add mode
+                const emailExist = users.find(u => u.email === email);
+                if (emailExist) {
+                    showToast('อีเมลนี้ถูกใช้งานแล้วในระบบ', 'error');
+                    return;
+                }
+
+                users.push({
+                    id: Date.now(),
+                    name,
+                    email,
+                    department: dept,
+                    role,
+                    password
+                });
+            }
+
+            await DB.setUsers(users);
+            closeModal('user-modal');
+            showToast('บันทึกข้อมูลผู้ใช้งานสำเร็จ', 'success');
+            renderUserManagement(document.getElementById('content-area'));
+        }
+
+        async function deleteUser(userId) {
+            if (userId === currentUser.id) {
+                showToast('คุณไม่สามารถลบตัวเองได้', 'error');
+                return;
+            }
+            if (!confirm('ยืนยันที่จะลบผู้ใช้งานรายนี้ออกจากระบบหรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+
+            const users = DB.getUsers();
+            const filtered = users.filter(u => u.id !== userId);
+            await DB.setUsers(filtered);
+            showToast('ลบผู้ใช้งานเรียบร้อยแล้ว', 'success');
+            renderUserManagement(document.getElementById('content-area'));
+        }
+
+        // ==================== SYSTEM SETTINGS MODAL ====================
+        function openSettings() {
+            renderSettingsLists();
+            openModal('settings-modal');
+        }
+
+        function renderSettingsLists() {
+            const settings = DB.getSettings();
+
+            // Render Categories
+            const catList = document.getElementById('category-list');
+            catList.innerHTML = settings.categories.map((cat, i) => `
+                <div class="flex items-center justify-between bg-white p-3 border border-gray-100 rounded-lg shadow-sm">
+                    <span class="font-medium text-gray-800 text-sm"><i class="fas fa-folder text-yellow-500 mr-2"></i>${cat}</span>
+                    <div class="flex gap-1">
+                        <button onclick="editCategory(${i})" class="text-blue-600 hover:bg-blue-50 w-7 h-7 flex items-center justify-center rounded"><i class="fas fa-edit text-xs"></i></button>
+                        <button onclick="deleteCategory(${i})" class="text-red-600 hover:bg-red-50 w-7 h-7 flex items-center justify-center rounded"><i class="fas fa-trash-alt text-xs"></i></button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Render Departments
+            const deptList = document.getElementById('dept-list');
+            deptList.innerHTML = settings.departments.map((dept, i) => `
+                <div class="flex items-center justify-between bg-white p-3 border border-gray-100 rounded-lg shadow-sm">
+                    <span class="font-medium text-gray-800 text-sm"><i class="fas fa-users-cog text-indigo-500 mr-2"></i>${dept}</span>
+                    <div class="flex gap-1">
+                        <button onclick="editDepartment(${i})" class="text-blue-600 hover:bg-blue-50 w-7 h-7 flex items-center justify-center rounded"><i class="fas fa-edit text-xs"></i></button>
+                        <button onclick="deleteDepartment(${i})" class="text-red-600 hover:bg-red-50 w-7 h-7 flex items-center justify-center rounded"><i class="fas fa-trash-alt text-xs"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function addCategory() {
+            const val = prompt('กรอกชื่อหมวดหมู่ใหม่:');
+            if (!val || val.trim() === '') return;
+
+            const settings = DB.getSettings();
+            if (settings.categories.includes(val.trim())) {
+                alert('หมวดหมู่นี้มีอยู่ในระบบอยู่แล้ว');
+                return;
+            }
+
+            settings.categories.push(val.trim());
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('เพิ่มหมวดหมู่สำเร็จ', 'success');
+        }
+
+        async function editCategory(index) {
+            const settings = DB.getSettings();
+            const oldVal = settings.categories[index];
+            const val = prompt('แก้ไขชื่อหมวดหมู่:', oldVal);
+            if (!val || val.trim() === '' || val.trim() === oldVal) return;
+
+            settings.categories[index] = val.trim();
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('แก้ไขหมวดหมู่สำเร็จ', 'success');
+        }
+
+        async function deleteCategory(index) {
+            if (!confirm('ยืนยันลบหมวดหมู่นี้?')) return;
+            const settings = DB.getSettings();
+            settings.categories.splice(index, 1);
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('ลบหมวดหมู่สำเร็จ', 'success');
+        }
+
+        async function addDepartment() {
+            const val = prompt('กรอกชื่อฝ่ายใหม่:');
+            if (!val || val.trim() === '') return;
+
+            const settings = DB.getSettings();
+            if (settings.departments.includes(val.trim())) {
+                alert('ชื่อฝ่ายนี้มีอยู่ในระบบอยู่แล้ว');
+                return;
+            }
+
+            settings.departments.push(val.trim());
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('เพิ่มฝ่ายสำเร็จ', 'success');
+        }
+
+        async function editDepartment(index) {
+            const settings = DB.getSettings();
+            const oldVal = settings.departments[index];
+            const val = prompt('แก้ไขชื่อฝ่าย:', oldVal);
+            if (!val || val.trim() === '' || val.trim() === oldVal) return;
+
+            settings.departments[index] = val.trim();
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('แก้ไขฝ่ายสำเร็จ', 'success');
+        }
+
+        async function deleteDepartment(index) {
+            if (!confirm('ยืนยันลบฝ่ายนี้?')) return;
+            const settings = DB.getSettings();
+            settings.departments.splice(index, 1);
+            await DB.setSettings(settings);
+            renderSettingsLists();
+            showToast('ลบฝ่ายสำเร็จ', 'success');
+        }
+
+        // ==================== SYSTEM INIT & DOM LISTENERS ====================
+        window.addEventListener('DOMContentLoaded', async () => {
+            await DB.init();
+            
+            // Register form submissions
+            document.getElementById('login-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value;
+                const pass = document.getElementById('login-password').value;
+                if (!login(email, pass)) {
+                    showToast('อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'error');
+                }
+            });
+
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('reg-name').value;
+                const email = document.getElementById('reg-email').value;
+                const dept = document.getElementById('reg-dept').value;
+                const role = document.getElementById('reg-role').value;
+                const pass = document.getElementById('reg-password').value;
+
+                const users = DB.getUsers();
+                if (users.some(u => u.email === email)) {
+                    showToast('อีเมลนี้ถูกใช้งานลงทะเบียนในระบบแล้ว', 'error');
+                    return;
+                }
+
+                users.push({
+                    id: Date.now(),
+                    name,
+                    email,
+                    department: dept,
+                    role,
+                    password: pass
+                });
+
+                await DB.setUsers(users);
+                showToast('ลงทะเบียนบัญชีใหม่สำเร็จแล้ว', 'success');
+                showLogin();
+            });
+
+            document.getElementById('submit-form').addEventListener('submit', submitDocumentForm);
+            document.getElementById('edit-form').addEventListener('submit', submitEditForm);
+            document.getElementById('user-form').addEventListener('submit', submitUserForm);
+
+            // Session check
+            checkSession();
+        });
+    </script>
+</body>
+</html>
