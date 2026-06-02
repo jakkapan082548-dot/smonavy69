@@ -66,7 +66,7 @@
                 <h1 class="text-2xl font-bold text-gray-900">ระบบส่งตรวจเอกสาร</h1>
                 <p class="text-gray-500 text-sm mt-1">Document Review System</p>
             </div>
-            <form id="login-form" class="space-y-4">
+            <form id="register-form" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
                     <input type="email" id="login-email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base" placeholder="email@company.com" required>
@@ -376,36 +376,101 @@
     </div>
 
     <script>
-        // ==================== DATA STORE (NEW SAFEMODE VERSION) ====================
-        // !!! ถ้าได้ URL จาก Google Apps Script (ตอนกด Deploy) ก็นำมาวางในเครื่องหมาย "" ด้านล่างนี้ได้เลยครับ !!!
-        // ❌ ของเดิมที่พิมพ์ซ้อนกัน
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyUzD1c1wB5-SgLjQWUkTn8jg1Uof_o6IWLaLyEOI2ohp07Qi7t5PqbcjpLizm79wLxmw/exec";
+        // ==================== DATA STORE & API BRIDGE ====================
+        // นำ URL ที่ได้จากการ Deploy ของ Google Apps Script มาใส่ตรงนี้ครับ
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyUzD1c1wB5-SgLjQWUkTn8jg1Uof_o6IWLaLyEOI2ohp07Qi7t5PqbcjpLizm79wLxmw/exec"; 
+        
         const DB = {
-            _cache: { users: [], docs: [], settings: {} },
-            
+            _docsCache: [],
             async init() {
-                // โหลดค่าตั้งต้นจากเครื่องเผื่อไว้ก่อน (ทำให้เว็บเปิดได้และล็อกอินได้ปกติแม้จะยังไม่เชื่อม Sheets)
-                this._loadLocalDefaults();
-
-                if (!WEB_APP_URL) {
-                    return;
-                }
-
-                try {
-                    showToast('กำลังโหลดข้อมูลเชื่อมต่อระบบกลาง...', 'info');
-                    const res = await fetch(`${WEB_APP_URL}?action=getAll`);
-                    const data = await res.json();
-                    if (data && data.users && data.users.length > 0) {
-                        this._cache.users = data.users;
-                        this._cache.docs = data.docs || [];
-                        this._cache.settings = data.settings || {};
-                        showToast('เชื่อมต่อฐานข้อมูล Sheets สำเร็จ', 'success');
-                    }
-                } catch (e) {
-                    console.error(e);
-                    showToast('ล้มเหลวในการเชื่อมต่อ Sheets (กำลังใช้ข้อมูลสำรองในคอมพิวเตอร์)', 'warning');
+                // หากล็อกอินค้างไว้ให้ดึงข้อมูลเอกสารทันที
+                if (currentUser) {
+                    await this.fetchDocsFromServer();
                 }
             },
+            getUsers() { return []; }, // ไม่จำเป็นต้องใช้ฝั่งเว็บแล้วเพราะเช็คผ่านชีตตรงๆ
+            getDocs() { return this._docsCache; },
+            getSettings() {
+                return {
+                    categories: ['ชั่วโมงกิจกรรมนิสิต', 'เบิกจ่าย', 'อนุมัติโครงการ', 'เอกสารอื่นๆ'],
+                    departments: ['นายกสโมสร', 'รองฝ่ายบริหาร', 'ประชาสัมพันธ์และทัศนศิลป์', 'ฝ่ายทะเบียนนิสิต', 'ฝ่ายกิจกรรมและบันเทิง']
+                };
+            },
+            async fetchDocsFromServer() {
+                if (!WEB_APP_URL) return;
+                try {
+                    const response = await fetch(WEB_APP_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            action: 'getDocuments',
+                            role: currentUser.role,
+                            username: currentUser.username
+                        })
+                    });
+                    const resData = await response.json();
+                    if (resData.success) {
+                        this._docsCache = resData.data;
+                    }
+                } catch (e) {
+                    console.error("โหลดข้อมูลเอกสารล้มเหลว", e);
+                    showToast('ดึงข้อมูลเอกสารจากระบบหลักไม่สำเร็จ', 'error');
+                }
+            }
+        };
+
+        // ==================== AUTH SYSTEM ====================
+        let currentUser = null;
+
+        // แก้ไขฟังก์ชันล็อกอินให้ดึงข้อมูลจาก Google Sheets ผ่าน API
+        async function login(email, password) {
+            if (!WEB_APP_URL) {
+                showToast('กรุณาตั้งค่า WEB_APP_URL ก่อนใช้งาน', 'error');
+                return false;
+            }
+            try {
+                showToast('กำลังตรวจสอบข้อมูล...', 'info');
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'login', username: email, password: password })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentUser = result.user; // เก็บข้อมูลผู้ใช้สำเร็จ
+                    localStorage.setItem('docreview_session', JSON.stringify(currentUser));
+                    await DB.fetchDocsFromServer(); // โหลดเอกสารของผู้ใช้นั้นๆ มาทันที
+                    showApp();
+                    showToast(`ยินดีต้อนรับคุณ ${currentUser.name}`, 'success');
+                    return true;
+                } else {
+                    showToast(result.message, 'error');
+                    return false;
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+                return false;
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('docreview_session');
+            showLogin();
+        }
+
+        function checkSession() {
+            const session = localStorage.getItem('docreview_session');
+            if (session) {
+                currentUser = JSON.parse(session);
+                DB.fetchDocsFromServer().then(() => {
+                    showApp();
+                });
+                return true;
+            }
+            showLogin();
+            return false;
+        }
             _loadLocalDefaults() {
                 this._cache.users = JSON.parse(localStorage.getItem('docreview_users') || '[]');
                 this._cache.docs = JSON.parse(localStorage.getItem('docreview_docs') || '[]');
@@ -1848,16 +1913,48 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await DB.init();
             
-            // Register form submissions
-            document.getElementById('login-form').addEventListener('submit', (e) => {
+            // วางโค้ดที่คุณถามถึงตรงนี้เลยครับ (ทับของเดิม)
+            // ---------------------------------------------------------
+            document.getElementById('login-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const email = document.getElementById('login-email').value;
                 const pass = document.getElementById('login-password').value;
-                if (!login(email, pass)) {
-                    showToast('อีเมลหรือรหัสผ่านไม่ถูกต้อง', 'error');
-                }
+                await login(email, pass);
             });
 
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('reg-name').value;
+                const email = document.getElementById('reg-email').value;
+                const role = document.getElementById('reg-role').value;
+                const pass = document.getElementById('reg-password').value;
+
+                try {
+                    showToast('กำลังบันทึกบัญชี...', 'info');
+                    const response = await fetch(WEB_APP_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'register', name, email, role, password: pass })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        showToast('ลงทะเบียนสำเร็จ! สามารถเข้าสู่ระบบได้ทันที', 'success');
+                        showLogin();
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (err) {
+                    showToast('ลงทะเบียนล้มเหลว', 'error');
+                }
+            });
+            // ---------------------------------------------------------
+
+            document.getElementById('submit-form').addEventListener('submit', submitDocumentForm);
+            document.getElementById('edit-form').addEventListener('submit', submitEditForm);
+            document.getElementById('user-form').addEventListener('submit', submitUserForm);
+
+            // Session check
+            checkSession();
+        });
             document.getElementById('register-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = document.getElementById('reg-name').value;
