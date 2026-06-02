@@ -1909,51 +1909,38 @@
             showToast('ลบฝ่ายสำเร็จ', 'success');
         }
 
-        // ==================== SYSTEM INIT & DOM LISTENERS ====================
-        window.addEventListener('DOMContentLoaded', async () => {
-            await DB.init();
-            
-            // วางโค้ดที่คุณถามถึงตรงนี้เลยครับ (ทับของเดิม)
-            // ---------------------------------------------------------
-            document.getElementById('login-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const email = document.getElementById('login-email').value;
-                const pass = document.getElementById('login-password').value;
-                await login(email, pass);
-            });
+        // แก้ฟังก์ชันตรวจจับการส่งฟอร์มล็อกอินเดิม
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            await login(email, pass);
+        });
 
-            document.getElementById('register-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const name = document.getElementById('reg-name').value;
-                const email = document.getElementById('reg-email').value;
-                const role = document.getElementById('reg-role').value;
-                const pass = document.getElementById('reg-password').value;
+        // แก้ฟังก์ชันตรวจจับการสมัครสมาชิกเดิม ให้บันทึกเข้า Sheets
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value;
+            const email = document.getElementById('reg-email').value;
+            const role = document.getElementById('reg-role').value;
+            const pass = document.getElementById('reg-password').value;
 
-                try {
-                    showToast('กำลังบันทึกบัญชี...', 'info');
-                    const response = await fetch(WEB_APP_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'register', name, email, role, password: pass })
-                    });
-                    const result = await response.json();
-                    if (result.success) {
-                        showToast('ลงทะเบียนสำเร็จ! สามารถเข้าสู่ระบบได้ทันที', 'success');
-                        showLogin();
-                    } else {
-                        showToast(result.message, 'error');
-                    }
-                } catch (err) {
-                    showToast('ลงทะเบียนล้มเหลว', 'error');
+            try {
+                showToast('กำลังบันทึกบัญชี...', 'info');
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'register', name, email, role, password: pass })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('ลงทะเบียนสำเร็จ! สามารถเข้าสู่ระบบได้ทันที', 'success');
+                    showLogin();
+                } else {
+                    showToast(result.message, 'error');
                 }
-            });
-            // ---------------------------------------------------------
-
-            document.getElementById('submit-form').addEventListener('submit', submitDocumentForm);
-            document.getElementById('edit-form').addEventListener('submit', submitEditForm);
-            document.getElementById('user-form').addEventListener('submit', submitUserForm);
-
-            // Session check
-            checkSession();
+            } catch (err) {
+                showToast('ลงทะเบียนล้มเหลว', 'error');
+            }
         });
             document.getElementById('register-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
